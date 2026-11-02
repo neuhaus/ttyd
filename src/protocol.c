@@ -15,25 +15,34 @@
 static char initial_cmds[] = {SET_WINDOW_TITLE, SET_PREFERENCES};
 
 static int send_initial_message(struct lws *wsi, int index) {
-  unsigned char message[LWS_PRE + 1 + 4096];
-  unsigned char *p = &message[LWS_PRE];
-  char buffer[128];
-  int n = 0;
+  char hostname[128] = {0};
+  const char *arg1 = NULL, *arg2 = NULL;
 
   char cmd = initial_cmds[index];
   switch (cmd) {
     case SET_WINDOW_TITLE:
-      gethostname(buffer, sizeof(buffer) - 1);
-      n = snprintf((char *)p, 1 + 4096, "%c%s (%s)", cmd, server->command, buffer);
+      gethostname(hostname, sizeof(hostname) - 1);
+      arg1 = server->command;
+      arg2 = hostname;
       break;
     case SET_PREFERENCES:
-      n = snprintf((char *)p, 1 + 4096, "%c%s", cmd, server->prefs_json);
+      arg1 = server->prefs_json;
       break;
     default:
-      break;
+      return 0;
   }
 
-  return lws_write(wsi, p, (size_t)n, LWS_WRITE_BINARY);
+  // size the message to fit long commands and preferences
+  const char *fmt = arg2 != NULL ? "%c%s (%s)" : "%c%s";
+  int n = snprintf(NULL, 0, fmt, cmd, arg1, arg2);
+  if (n < 0) return -1;
+  unsigned char *message = xmalloc(LWS_PRE + (size_t)n + 1);
+  unsigned char *p = &message[LWS_PRE];
+  snprintf((char *)p, (size_t)n + 1, fmt, cmd, arg1, arg2);
+
+  int ret = lws_write(wsi, p, (size_t)n, LWS_WRITE_BINARY);
+  free(message);
+  return ret;
 }
 
 static json_object *parse_window_size(const char *buf, size_t len, uint16_t *cols, uint16_t *rows) {
