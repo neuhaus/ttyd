@@ -203,19 +203,29 @@ static WCHAR *to_utf16(char *str) {
 
 // convert argv to cmdline for CreateProcessW
 static WCHAR *join_args(char **argv) {
-  char args[256] = {0};
-  char **ptr = argv;
-  for (; *ptr; ptr++) {
-    char *quoted = (char *) quote_arg(*ptr);
-    size_t arg_len = strlen(args) + 1;
-    size_t quoted_len = strlen(quoted);
-    if (arg_len == 1) memset(args, 0, 2);
-    if (arg_len != 1) strcat(args, " ");
-    strncat(args, quoted, quoted_len);
-    if (quoted != *ptr) free(quoted);
+  char **ptr;
+  size_t len = 1;  // null terminator
+  for (ptr = argv; *ptr; ptr++) {
+    const char *quoted = quote_arg(*ptr);
+    len += strlen(quoted) + 1;  // separator
+    if (quoted != *ptr) free((void *) quoted);
   }
-  if (args[255] != '\0') args[255] = '\0';  // truncate
-  return to_utf16(args);
+
+  char *args = xmalloc(len);
+  char *p = args;
+  for (ptr = argv; *ptr; ptr++) {
+    const char *quoted = quote_arg(*ptr);
+    size_t quoted_len = strlen(quoted);
+    if (p != args) *p++ = ' ';
+    memcpy(p, quoted, quoted_len);
+    p += quoted_len;
+    if (quoted != *ptr) free((void *) quoted);
+  }
+  *p = '\0';
+
+  WCHAR *wargs = to_utf16(args);
+  free(args);
+  return wargs;
 }
 
 static bool conpty_setup(HPCON *hnd, COORD size, STARTUPINFOEXW *si_ex, char **in_name, char **out_name) {
